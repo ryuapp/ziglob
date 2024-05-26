@@ -385,6 +385,34 @@ inline fn skipGlobstars(glob: []const u8, glob_index: *usize) usize {
     return glob_index.*;
 }
 
+pub fn walk(alc: std.mem.Allocator, path: []const u8) !void {
+    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+    defer dir.close();
+
+    const real_path = try std.fs.cwd().realpathAlloc(alc, path);
+    defer alc.free(real_path);
+
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        std.debug.print("{s}\\{s}\n", .{ real_path, entry.name });
+
+        var new_path: []const u8 = undefined;
+        if (entry.kind == .directory) {
+            if (path.len > 0 and path[path.len - 1] != '/' and entry.name.len > 0 and entry.name[0] != '/') {
+                new_path = try std.fmt.allocPrint(alc, "{s}/{s}", .{ path, entry.name });
+            } else {
+                new_path = try std.fmt.allocPrint(alc, "{s}{s}", .{ path, entry.name });
+            }
+            defer alc.free(new_path);
+            try walk(alc, new_path);
+        }
+    }
+}
+
+pub fn main() !void {
+    try walk(std.heap.page_allocator, ".");
+}
+
 test "basic" {
     try expect(match("abc", "abc"));
     try expect(match("*", "abc"));
